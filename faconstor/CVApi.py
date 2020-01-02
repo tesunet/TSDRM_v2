@@ -4073,6 +4073,7 @@ class CV_API(object):
         # param client is clientName or clientId
         # return vmlist, {"VMName":, "VMGuID":}
         clientInfo = CV_Client(self.token)
+        print(client)
         info = clientInfo.getClientInfo(client)
         if info == None:
             self.msg = clientInfo.msg

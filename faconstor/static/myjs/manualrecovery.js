@@ -1,141 +1,81 @@
-$(document).ready(function () {
-    $('#client_manage_dt').dataTable({
-        "bAutoWidth": true,
-        "bSort": false,
-        "bProcessing": true,
-        "ajax": "../manualrecoverydata/",
-        "columns": [
-            {"data": "client_name"},
-            {"data": "model"},
-            {"data": "client_os"},
+    $(document).ready(function() {
+        $('#sample_1').dataTable( {
+            "bAutoWidth": true,
+            "bSort": false,
+            "bProcessing": true,
+            "ajax": "../manualrecoverydata/",
+            "columns": [
+                { "data": "clientName" },
+                { "data": "platform" },
+                { "data": "type" },
 
-        ],
+            ],
 
-        "columnDefs": [{
-            "targets": 0,
-            "mRender": function (data, type, full) {
-                return "<a id='edit' data-toggle='modal' data-target='#static1'>" + data + "</a><input type='text' value='" + full.data_path + "' hidden>"
-            }
-        }],
-        "oLanguage": {
+            "columnDefs": [{
+                    "targets": 0,
+                    "mRender":function(data,type,full){
+                        return "<a id='edit'  data-toggle='modal'  data-target='#static1'>" + data+"</a>"
+                    }
+            }],
+            "oLanguage": {
             "sLengthMenu": "&nbsp;&nbsp;每页显示 _MENU_ 条记录",
             "sZeroRecords": "抱歉， 没有找到",
             "sInfo": "从 _START_ 到 _END_ /共 _TOTAL_ 条数据",
-            "sInfoEmpty": '',
+            "sInfoEmpty":'',
             "sInfoFiltered": "(从 _MAX_ 条数据中检索)",
             "sSearch": "搜索",
             "oPaginate": {
-                "sFirst": "首页",
-                "sPrevious": "前一页",
-                "sNext": "后一页",
-                "sLast": "尾页"
+            "sFirst": "首页",
+            "sPrevious": "前一页",
+            "sNext": "后一页",
+            "sLast": "尾页"
             },
             "sZeroRecords": "没有检索到数据",
 
-        }
-    });
-
-    $('#static1').on('show.bs.modal', function (e) {
-        var el = e.relatedTarget;
-        var jQuery_el = $(el);
-        var agent = jQuery_el.parent().next().html();
-        var data_path = jQuery_el.next().val();
-        $("#agent").val(agent);
-        $("#data_path").val(data_path);
-
-        $("#sourceClient").val(el.innerText);
-        var datatable = $("#backup_point").dataTable();
-        datatable.fnClearTable(); //清空数据
-        datatable.fnDestroy();
-        $('#backup_point').dataTable({
-            "bAutoWidth": true,
-            "bProcessing": true,
-            "bSort": false,
-            "ajax": "../../oraclerecoverydata?clientName=" + $('#sourceClient').val(),
-            "columns": [
-                {"data": "jobId"},
-                {"data": "jobType"},
-                {"data": "Level"},
-                {"data": "StartTime"},
-                {"data": "LastTime"},
-                {"data": null},
-            ],
-            "columnDefs": [{
-                "targets": -1,
-                "data": null,
-                "defaultContent": "<button  id='select' title='选择'  class='btn btn-xs btn-primary' type='button'><i class='fa fa-check'></i></button>"
-            }],
-
-            "oLanguage": {
-                "sLengthMenu": "&nbsp;&nbsp;每页显示 _MENU_ 条记录",
-                "sZeroRecords": "抱歉， 没有找到",
-                "sInfo": "从 _START_ 到 _END_ /共 _TOTAL_ 条数据",
-                "sInfoEmpty": '',
-                "sInfoFiltered": "(从 _MAX_ 条数据中检索)",
-                "sSearch": "搜索",
-                "oPaginate": {
-                    "sFirst": "首页",
-                    "sPrevious": "前一页",
-                    "sNext": "后一页",
-                    "sLast": "尾页"
-                },
-                "sZeroRecords": "没有检索到数据",
-
             }
-        });
-        $('#backup_point tbody').on('click', 'button#select', function () {
-            var table = $('#backup_point').DataTable();
-            var data = table.row($(this).parents('tr')).data();
-            $("#datetimepicker").val(data.LastTime);
-            $("input[name='optionsRadios'][value='1']").prop("checked", false);
-            $("input[name='optionsRadios'][value='2']").prop("checked", true);
-            $("#browseJobId").val(data.jobId);
+            } );
+        // 行按钮
 
-        });
-
-        $("#recovery_time_redio_group").click(function () {
-            if ($("input[name='optionsRadios']:checked").val() == 1) {
-                $("#datetimepicker").val("");
-            }
-        });
-    });
-
-    $('#datetimepicker').datetimepicker({
-        format: 'yyyy-mm-dd hh:ii:ss',
-        pickerPosition: 'top-right'
-    });
-    $('#recovery').click(function () {
-        if ($("input[name='optionsRadios']:checked").val() == "2" && $('#datetimepicker').val() == "")
-            alert("请输入时间。");
-        else {
-            if ($('#destClient').val() == "")
-                alert("请选择目标客户端。");
-            else {
-                var myrestoreTime = "";
-                if ($("input[name='optionsRadios']:checked").val() == "2" && $('#datetimepicker').val() != ""){
-                    myrestoreTime = $('#datetimepicker').val();
-                }
-                $.ajax({
-                    type: "POST",
-                    url: "../../dooraclerecovery/",
-                    data: {
-                        sourceClient: $('#sourceClient').val(),
-                        destClient: $('#destClient').val(),
-                        restoreTime: myrestoreTime,
-                        browseJobId: $("#browseJobId").val(),
-                        // 判断是oracle还是oracle rac
-                        agent: $("#agent").val(),
-                        data_path: $("#data_path").val()
-                    },
-                    success: function (data) {
-                        alert(data);
-                        $("#static1").modal("hide");
-                    },
-                    error: function (e) {
-                        alert("恢复失败，请于客服联系。");
+        $('#sample_1 tbody').on( 'click', 'a#edit', function () {
+                var table = $('#sample_1').DataTable();
+                var data = table.row( $(this).parents('tr') ).data();
+                if (data.type=="physical box"){
+                    $("#vm").hide()
+                    $("#filesystem").hide()
+                    $("#oracle").hide()
+                    $("#mssql").hide()
+                    for (var i=0;i<data.agentType.length;i++)
+                    {
+                        if(data.agentType[i]=="File System")
+                        {
+                            $("#filesystem").show()
+                            $("#filesystem").attr("href","/filerecovery/"+data.id);
+                        }
+                        if(data.agentType[i]=="Oracle")
+                        {
+                            $("#oracle").show()
+                            $("#oracle").attr("href","/oraclerecovery/"+data.id);
+                        }
+                        if(data.agentType[i]=="SQL Server")
+                        {
+                            $("#mssql").show()
+                            $("#mssql").attr("href","/mssqlrecovery/"+data.id);
+                        }
                     }
-                });
-            }
-        }
-    });
-});
+
+                }
+                else
+                {
+                    if (data.type=="VMWARE"){
+                        $("#vm").show()
+                        $("#filesystem").hide()
+                        $("#oracle").hide()
+                        $("#mssql").hide()
+                        $("#vm").attr("href","/vmrecovery/"+data.id);
+                    }
+                    else
+                        alert("暂不支持。");
+                }
+        });
+
+    } );

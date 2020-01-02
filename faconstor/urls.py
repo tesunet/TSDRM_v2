@@ -180,7 +180,7 @@ urlpatterns = [
     url(r'^phyproconfigsavemssql/$', phyproconfigsavemssql),
 
 
-    url(r'^vmproconfig/$', vmproconfig, {'funid': '86'}),
+    url(r'^vmproconfig/$', vmproconfig, {'funid': '88'}),
     url(r'^vmproconfigdata/$', vmproconfigdata),
     url(r'^vmproconfigsave/$', vmproconfigsave),
     url(r'^getvmlist/$', getvmlist),
@@ -207,4 +207,22 @@ urlpatterns = [
     url(r'^schduleresourcesave/$', schduleresourcesave),
     url(r'^schduleresourcedel/$', schduleresourcedel),
     url(r'^getschdulecert/$', getschdulecert),
+
+    url(r'^oraclerecovery/(\d+)/$', oraclerecovery),
+    url(r'^dooraclerecovery/$', dooraclerecovery),
+    url(r'^oraclerecoverydata/$', oraclerecoverydata),
+
+    url(r'^mssqlrecovery/(\d+)/$', mssqlrecovery),
+    url(r'^domssqlrecovery/$', domssqlrecovery),
+    url(r'^mssqlrecoverydata/$', mssqlrecoverydata),
+
+    url(r'^filerecovery/(\d+)/$', filerecovery),
+    url(r'^dofilerecovery/$', dofilerecovery),
+    url(r'^filerecoverydata/$', filerecoverydata),
+    url(r'^getfiletree/$', getfiletree),
+
+    url(r'^vmrecovery/(\d+)/$', vmrecovery),
+    url(r'^getproxylist/$', getproxylist),
+    url(r'^dovmrecovery/$', dovmrecovery),
+    url(r'^vmrecoverydata/$', vmrecoverydata),
 ]

@@ -50,7 +50,8 @@ from .CVApi import *
 funlist = []
 
 walkthroughinfo = {}
-
+info = {"webaddr": "cv-server", "port": "81", "username": "admin", "passwd": "Admin@2017", "token": "",
+        "lastlogin": 0}
 
 def file_iterator(file_name, chunk_size=512):
     with open(file_name, "rb") as f:
@@ -7036,19 +7037,85 @@ def manualrecovery(request, funid):
 def manualrecoverydata(request):
     if request.user.is_authenticated():
         result = []
-        all_origins = Origin.objects.exclude(state="9")
-        for origin in all_origins:
-            result.append({
-                "client_manage_id": origin.id,
-                "client_name": origin.client_name,
-                "client_id": origin.client_id,
-                "client_os": origin.os,
-                "model": json.loads(origin.info)["agent"],
-                "data_path": origin.target.data_path
-            })
-        return JsonResponse({"data": result})
+        allhost = ClientHost.objects.exclude(status="9").filter(
+            owernID=request.user.userinfo.userGUID)
+        if (len(allhost) > 0):
+            for host in allhost:
+                clientName = host.clientName
+                clientGUID = host.clientGUID
+                clientID = host.id
+                platform = host.platform
+                status = "否"
+                if host.status == "1":
+                    status = "是"
+                agentTypeList = host.agentTypeList
+                agentType = []
+                try:
+                    doc = parseString(agentTypeList)
+                    for node in doc.getElementsByTagName("agentTypeList"):
+                        for agenttypenode in node.getElementsByTagName("agentType"):
+                            agentType.append(agenttypenode.childNodes[0].data)
+                except:
+                    pass
+
+                if host.hostType == "VMWARE":
+                    alldataset = DataSet.objects.filter(clientGUID=clientGUID).exclude(status="9")
+                    if len(alldataset) > 0:
+                        for dataset in alldataset:
+                            appGroup = dataset.appGroup
+                            dataSetID = dataset.id
+                            content = dataset.content
+                            backupContentlist = []
+                            if content != "" and content != None:
+                                doc = parseString(content)
+                                try:
+                                    for node in doc.getElementsByTagName("backupContent"):
+                                        a = len(node.getElementsByTagName("VM"))
+                                        for vmlistnode in node.getElementsByTagName("VM"):
+                                            try:
+                                                backupContentlist.append(vmlistnode.childNodes[0].data)
+
+                                            except:
+                                                pass
+                                except:
+                                    pass
+                            result.append(
+                                {"clientName": appGroup, "id": dataSetID, "type": host.hostType, "platform": platform,
+                                 "state": status, "backupContent": backupContentlist})
+                else:
+                    result.append(
+                        {"clientName": clientName, "id": clientID, "platform": platform, "type": host.hostType,
+                         "state": status, "agentType": agentType})
+        return HttpResponse(json.dumps({"data": result}))
+
+
+def oraclerecovery(request, offset):
+    if request.user.is_authenticated():
+        id = 0
+        try:
+            id = int(offset)
+        except:
+            raise Http404()
+        myhost = ClientHost.objects.filter(id=id)
+        if len(myhost) > 0:
+            if myhost[0].owernID == request.user.userinfo.userGUID:
+                alldataset = DataSet.objects.filter(clientGUID=myhost[0].clientGUID, agentType='Oracle').exclude(
+                    status="9")
+                if len(alldataset) > 0:
+                    allhost = ClientHost.objects.exclude(status="9").filter(Q(hostType="physical box") & (
+                            Q(owernID=request.user.userinfo.userGUID) | Q(
+                        userinfo__id=request.user.userinfo.id))).filter(
+                        agentTypeList__contains="<agentType>Oracle</agentType>")
+                    destClient = []
+                    for host in allhost:
+                        destClient.append(host.clientName)
+                    return render(request, 'oraclerecovery.html', {'username': request.user.userinfo.fullname,
+                                                                   "instanceName": alldataset[0].instanceName,
+                                                                   "clientName": myhost[0].clientName,
+                                                                   "destClient": destClient,
+                                                                   "manualrecoverypage": True, "pagefuns": getpagefuns('79', request)})
     else:
-        return HttpResponseRedirect("/login")
+        return HttpResponseRedirect("/index")
 
 
 def dooraclerecovery(request):
@@ -7057,60 +7124,419 @@ def dooraclerecovery(request):
             sourceClient = request.POST.get('sourceClient', '')
             destClient = request.POST.get('destClient', '')
             restoreTime = request.POST.get('restoreTime', '')
-            browseJobId = request.POST.get('browseJobId', '')
-            agent = request.POST.get('agent', '')
-            data_path = request.POST.get('data_path', '')
+            instanceName = request.POST.get('instanceName', '')
 
-            #################################
-            # sourceClient>> instance_name  #
-            #################################
-            instance = ""
-            try:
-                cur_origin = Origin.objects.exclude(state="9").get(client_name=sourceClient)
-            except Origin.DoesNotExist as e:
-                return HttpResponse("恢复任务启动失败, 源客户端不存在。")
-            else:
-                oracle_info = json.loads(cur_origin.info)
+            oraRestoreOperator = {"restoreTime": restoreTime, "restorePath": None}
 
-                if oracle_info:
-                    try:
-                        instance = oracle_info["instance"]
-                    except:
-                        pass
-            if not instance:
-                return HttpResponse("恢复任务启动失败, 数据库实例不存在。")
-
-            oraRestoreOperator = {"restoreTime": restoreTime, "browseJobId": None, "data_path": data_path}
             cvToken = CV_RestApi_Token()
-            cvToken.login(settings.CVApi_credit)
+            cvToken.login(info)
             cvAPI = CV_API(cvToken)
-            if agent.upper() == "ORACLE DATABASE":
-                if cvAPI.restoreOracleBackupset(sourceClient, destClient, instance, oraRestoreOperator):
-                    return HttpResponse("恢复任务已经启动。" + cvAPI.msg)
-                else:
-                    return HttpResponse("恢复任务启动失败。" + cvAPI.msg)
-            elif agent.upper() == "ORACLE RAC":
-                oraRestoreOperator["browseJobId"] = browseJobId
-                if cvAPI.restoreOracleRacBackupset(sourceClient, destClient, instance, oraRestoreOperator):
-                    return HttpResponse("恢复任务已经启动。" + cvAPI.msg)
-                else:
-                    return HttpResponse("恢复任务启动失败。" + cvAPI.msg)
+            if cvAPI.restoreOracleBackupset(sourceClient, destClient, instanceName, oraRestoreOperator):
+                return HttpResponse("恢复任务已经启动。" + cvAPI.msg)
             else:
-                return HttpResponse("无当前模块，恢复任务启动失败。")
+                return HttpResponse(u"恢复任务启动失败。" + cvAPI.msg)
         else:
             return HttpResponse("恢复任务启动失败。")
 
 
 def oraclerecoverydata(request):
     if request.user.is_authenticated():
-        client_name = request.GET.get('clientName', '')
         result = []
+        cvToken = CV_RestApi_Token()
+        cvToken.login(info)
+        cvAPI = CV_API(cvToken)
+        clientName = request.GET.get('clientName', '')
+        cvBackup = cvAPI.getBackupset(clientName, "Oracle Database")
 
-        dm = SQLApi.CustomFilter(settings.sql_credit)
-        result = dm.get_oracle_backup_job_list(client_name)
-        return JsonResponse({"data": result})
+        result = cvAPI.getJobList(cvBackup["clientId"], agentType=None, backupset=cvBackup["backupsetName"],
+                                  type="backup")
+        for node in result:
+            try:
+                x = time.localtime(float(node["LastTime"]))
+                node["LastTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+            try:
+
+                x = time.localtime(float(node["StartTime"]))
+                node["StartTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+        return HttpResponse(json.dumps({"data": result}))
+
+
+def mssqlrecovery(request, offset):
+    if request.user.is_authenticated():
+        id = 0
+        try:
+            id = int(offset)
+        except:
+            raise Http404()
+        myhost = ClientHost.objects.filter(id=id)
+        if len(myhost) > 0:
+            if myhost[0].owernID == request.user.userinfo.userGUID:
+                alldataset = DataSet.objects.filter(clientGUID=myhost[0].clientGUID, agentType='SQL Server').exclude(
+                    status="9")
+                if len(alldataset) > 0:
+                    allhost = ClientHost.objects.exclude(status="9").filter(Q(hostType="physical box") &
+                                                                            (Q(
+                                                                                owernID=request.user.userinfo.userGUID) | Q(
+                                                                                userinfo__id=request.user.userinfo.id))).filter(
+                        agentTypeList__contains="<agentType>SQL Server</agentType>")
+                    destClient = []
+                    for host in allhost:
+                        destClient.append(host.clientName)
+                    return render(request, 'mssqlrecovery.html', {'username': request.user.userinfo.fullname,
+                                                                  "instanceName": alldataset[0].instanceName,
+                                                                  "clientName": myhost[0].clientName,
+                                                                  "destClient": destClient, "manualrecoverypage": True, "pagefuns": getpagefuns('79', request)})
     else:
-        return HttpResponseRedirect("/login")
+        return HttpResponseRedirect("/index")
+
+
+def domssqlrecovery(request):
+    if request.user.is_authenticated():
+        if request.method == 'POST':
+            sourceClient = request.POST.get('sourceClient', '')
+            destClient = request.POST.get('destClient', '')
+            restoreTime = request.POST.get('restoreTime', '')
+            instanceName = request.POST.get('instanceName', '')
+            iscover = request.POST.get('iscover', '')
+            overWrite = False
+            if iscover == "TRUE":
+                overWrite = True
+
+            mssqlRestoreOperator = {"restoreTime": restoreTime, "overWrite": overWrite}
+            cvToken = CV_RestApi_Token()
+            cvToken.login(info)
+            cvAPI = CV_API(cvToken)
+            if cvAPI.restoreMssqlBackupset(sourceClient, destClient, instanceName, mssqlRestoreOperator):
+                return HttpResponse("恢复任务已经启动。" + cvAPI.msg)
+            else:
+                return HttpResponse(u"恢复任务启动失败。" + cvAPI.msg)
+            return HttpResponse("开发中...")
+        else:
+            return HttpResponse("恢复任务启动失败。")
+
+
+def mssqlrecoverydata(request):
+    if request.user.is_authenticated():
+        result = []
+        cvToken = CV_RestApi_Token()
+        cvToken.login(info)
+        cvAPI = CV_API(cvToken)
+        clientName = request.GET.get('clientName', '')
+        cvBackup = cvAPI.getBackupset(clientName, "SQL Server")
+
+        result = cvAPI.getJobList(cvBackup["clientId"], agentType=None, backupset=cvBackup["backupsetName"],
+                                  type="backup")
+        for node in result:
+            try:
+                x = time.localtime(float(node["LastTime"]))
+                node["LastTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+            try:
+
+                x = time.localtime(float(node["StartTime"]))
+                node["StartTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+        return HttpResponse(json.dumps({"data": result}))
+
+
+def filerecovery(request, offset):
+    if request.user.is_authenticated():
+        id = 0
+        try:
+            id = int(offset)
+        except:
+            raise Http404()
+        myhost = ClientHost.objects.filter(id=id)
+        if len(myhost) > 0:
+            if myhost[0].owernID == request.user.userinfo.userGUID:
+                alldataset = DataSet.objects.filter(clientGUID=myhost[0].clientGUID, agentType='File System').exclude(
+                    status="9")
+                if len(alldataset) > 0:
+                    allhost = ClientHost.objects.exclude(status="9").filter(hostType="physical box").filter(
+                                                                                owernID=request.user.userinfo.userGUID).filter(
+                        agentTypeList__contains="<agentType>File System</agentType>")
+                    destClient = []
+                    for host in allhost:
+                        destClient.append(host.clientName)
+                    return render(request, 'filerecovery.html', {'username': request.user.userinfo.fullname,
+                                                                 "instanceName": alldataset[0].instanceName,
+                                                                 "clientName": myhost[0].clientName,
+                                                                 "destClient": destClient, "manualrecoverypage": True, "pagefuns": getpagefuns('79', request)})
+    else:
+        return HttpResponseRedirect("/index")
+
+
+def dofilerecovery(request):
+    if request.user.is_authenticated():
+
+        if request.method == 'POST':
+            sourceClient = request.POST.get('sourceClient', '')
+            destClient = request.POST.get('destClient', '')
+            restoreTime = request.POST.get('restoreTime', '')
+            instanceName = request.POST.get('instanceName', '')
+            iscover = request.POST.get('iscover', '')
+            mypath = request.POST.get('mypath', '')
+            selectedfile = request.POST.get('selectedfile')
+            sourceItemlist = selectedfile.split("*!-!*")
+            client = ClientHost.objects.filter(clientName=sourceClient)
+            if len(client) > 0:
+                if 'LINUX' in client[0].platform.upper():
+                    for i in range(len(sourceItemlist)):
+                        if sourceItemlist[i] == '\\':
+                            sourceItemlist[i] = '/'
+                        else:
+                            sourceItemlist[i] = sourceItemlist[i][1:-1]
+            inPlace = True
+            if mypath != "same":
+                inPlace = False
+            else:
+                mypath = ""
+            overWrite = False
+            if iscover == "TRUE":
+                overWrite = True
+
+            for sourceItem in sourceItemlist:
+                if sourceItem == "":
+                    sourceItemlist.remove(sourceItem)
+
+            fileRestoreOperator = {"restoreTime": restoreTime, "overWrite": overWrite, "inPlace": inPlace,
+                                   "destPath": mypath, "sourcePaths": sourceItemlist, "OS Restore": False}
+
+            cvToken = CV_RestApi_Token()
+            cvToken.login(info)
+            cvAPI = CV_API(cvToken)
+            if cvAPI.restoreFSBackupset(sourceClient, destClient, "defaultBackupSet", fileRestoreOperator):
+                return HttpResponse("恢复任务已经启动。" + cvAPI.msg)
+            else:
+                return HttpResponse(u"恢复任务启动失败。" + cvAPI.msg)
+
+        else:
+            return HttpResponse("恢复任务启动失败。")
+
+
+def filerecoverydata(request):
+    if request.user.is_authenticated():
+        result = []
+        cvToken = CV_RestApi_Token()
+        cvToken.login(info)
+        cvAPI = CV_API(cvToken)
+        clientName = request.GET.get('clientName', '')
+        cvBackup = cvAPI.getBackupset(clientName, "File System")
+
+        result = cvAPI.getJobList(cvBackup["clientId"], agentType=None, backupset=cvBackup["backupsetName"],
+                                  type="backup")
+        for node in result:
+            try:
+                x = time.localtime(float(node["LastTime"]))
+                node["LastTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+            try:
+
+                x = time.localtime(float(node["StartTime"]))
+                node["StartTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+        return HttpResponse(json.dumps({"data": result}))
+
+
+def getfiletree(request):
+    id = request.POST.get('id', '')
+    clientName = request.POST.get('clientName', '')
+    allhost = ClientHost.objects.exclude(status="9").filter(clientName=clientName)
+    treedata = []
+    if len(allhost) > 0:
+        clientID = int(allhost[0].clientID)
+        cvToken = CV_RestApi_Token()
+        cvToken.login(info)
+        cvAPI = CV_API(cvToken)
+        list = cvAPI.browse(clientID, "File System", None, id, False)
+        for node in list:
+            root = {}
+            root["id"] = node["path"]
+            root["pId"] = id
+            root["name"] = node["path"]
+            if node["DorF"] == "D":
+                root["isParent"] = True
+            else:
+                root["isParent"] = False
+            treedata.append(root)
+        treedata = json.dumps(treedata)
+
+    return HttpResponse(treedata)
+
+
+def vmrecovery(request, offset):
+    if request.user.is_authenticated():
+        id = 0
+        try:
+            id = int(offset)
+        except:
+            raise Http404()
+        mydataset = DataSet.objects.filter(id=id)
+        if len(mydataset) > 0:
+            if mydataset[0].owernID == request.user.userinfo.userGUID:
+                allhost = ClientHost.objects.exclude(status="9").filter(Q(hostType="VMWARE") &
+                                                                        (Q(owernID=request.user.userinfo.userGUID) | Q(
+                                                                            userinfo__id=request.user.userinfo.id)))
+                # allhost = ClientHost.objects.exclude(status="9").filter(hostType="VMWARE").exclude(clientGUID=mydataset[0].clientGUID)
+                destClient = []
+                vmlist = []
+                dslist = []
+                esxlist = []
+                for host in allhost:
+                    destClient.append(host.clientName)
+
+                clientID = int(mydataset[0].clientID)
+                cvToken = CV_RestApi_Token()
+                cvToken.login(info)
+                cvAPI = CV_API(cvToken)
+                list = cvAPI.browse(clientID, "Virtual Server", mydataset[0].appGroup, None, False)
+
+                for node in list:
+                    vmlist.append({"name": node["displayName"], "id": node["name"]})
+
+                VMWareDataStoreList = cvAPI.getVMWareDataStoreList(clientID)
+                for VMWareDataStore in VMWareDataStoreList:
+                    if {"text": VMWareDataStore["esxhost"], "value": VMWareDataStore["esxstrGUID"]} not in esxlist:
+                        esxlist.append({"text": VMWareDataStore["esxhost"], "value": VMWareDataStore["esxstrGUID"]})
+                    dslist.append({"text": VMWareDataStore["dataStoreName"],
+                                   "value": VMWareDataStore["esxstrGUID"] + VMWareDataStore["dataStoreName"]})
+
+                return render(request, 'vmrecovery.html',
+                              {'username': request.user.userinfo.fullname, "appName": mydataset[0].appGroup,
+                               "clientName": mydataset[0].clientName, "vmlist": vmlist, "esxlist": esxlist,
+                               "dslist": dslist, "destClient": destClient, "manualrecoverypage": True, "pagefuns": getpagefuns('79', request)})
+            else:
+                return HttpResponseRedirect("/manualrecovery")
+        else:
+            return HttpResponseRedirect("/manualrecovery")
+    else:
+        return HttpResponseRedirect("/index")
+
+
+def getproxylist(request):
+    if request.user.is_authenticated() and request.session['isadmin']:
+        if request.method == 'POST':
+            result = []
+            clientName = request.POST.get('clientName', '')
+            allhost = ClientHost.objects.exclude(status="9").filter(hostType="VMWARE").filter(
+                clientName=clientName)
+            if (len(allhost) > 0):
+                proxyClientID = allhost[0].proxyClientID
+                if proxyClientID != "" and proxyClientID != None:
+                    doc = parseString(proxyClientID)
+                    for node in doc.getElementsByTagName("PROXYLIST"):
+                        for proxylistnode in node.getElementsByTagName("PROXY"):
+                            try:
+                                proxy = ClientHost.objects.get(clientGUID=proxylistnode.childNodes[0].data)
+                                result.append(proxy.clientName)
+                            except:
+                                pass
+            return HttpResponse(json.dumps(result))
+
+
+def dovmrecovery(request):
+    if request.user.is_authenticated():
+        if request.method == 'POST':
+            appName = request.POST.get('appName', '')
+            sourceClient = request.POST.get('sourceClient', '')
+            sourceVMName = request.POST.get('sourceVMName', '')
+            sourceVMGUID = request.POST.get('sourceVMGUID', '')
+            newname = request.POST.get('newname', '')
+            destClient = request.POST.get('destClient', '')
+            proxyClient = request.POST.get('proxyClient', '')
+            esxhost = request.POST.get('esxlist', '')
+            dataStoreName = request.POST.get('dslist', '')
+            disk = request.POST.get('disk', '')
+            power = request.POST.get('power', '')
+            iscover = request.POST.get('iscover', '')
+            restoreTime = request.POST.get('restoreTime', '')
+            mypower = False
+            myiscover = False
+            if power == "TRUE":
+                mypower = True
+            if iscover == "TRUE":
+                myiscover = True
+            hostname = ""
+            username = ""
+
+            allhost = ClientHost.objects.exclude(status="9").filter(hostType="VMWARE").filter(
+                clientName=sourceClient)
+            if len(allhost) > 0:
+                creditInfo = allhost[0].creditInfo
+                if creditInfo != "" and creditInfo != None:
+                    doc = parseString(creditInfo)
+                    for node in doc.getElementsByTagName("creditInfo"):
+                        for hostnode in node.getElementsByTagName("HOST"):
+                            hostname = hostnode.childNodes[0].data
+                        for usernode in node.getElementsByTagName("USER"):
+                            username = usernode.childNodes[0].data
+                    vsaBrowseProxy = ""
+                    proxyClientID = allhost[0].proxyClientID
+                    if proxyClientID != "" and proxyClientID != None:
+                        doc = parseString(proxyClientID)
+                        for node in doc.getElementsByTagName("PROXYLIST"):
+                            for proxylistnode in node.getElementsByTagName("PROXY"):
+                                try:
+                                    proxy = ClientHost.objects.get(clientGUID=proxylistnode.childNodes[0].data)
+                                    vsaBrowseProxy = proxy.clientName
+                                    break
+                                except:
+                                    pass
+
+                    vmRestoreOperator = {"vsaClientName": sourceClient, "vmGUID": sourceVMGUID, "vmName": sourceVMName,
+                                         "vsaBrowseProxy": vsaBrowseProxy,
+                                         "vsaRestoreProxy": proxyClient, "vCenterHost": hostname,
+                                         "vcenterUser": username, "DCName": esxhost, "esxHost": esxhost,
+                                         "datastore": dataStoreName,
+                                         "newVMName": newname, "diskOption": disk, "Power": mypower,
+                                         "overWrite": myiscover, "restoreTime": restoreTime}
+                    cvToken = CV_RestApi_Token()
+                    cvToken.login(info)
+                    cvAPI = CV_API(cvToken)
+                    if cvAPI.restoreVMWareBackupset(sourceClient, destClient, appName, vmRestoreOperator):
+                        return HttpResponse("恢复任务已经启动。" + cvAPI.msg)
+                    else:
+                        return HttpResponse(u"恢复任务启动失败。" + cvAPI.msg)
+
+                return HttpResponse("虚拟中心主机信息配置错误。")
+            else:
+                return HttpResponse("客户端不存在。")
+        else:
+            return HttpResponse("恢复任务启动失败。")
+
+
+def vmrecoverydata(request):
+    if request.user.is_authenticated():
+        result = []
+        cvToken = CV_RestApi_Token()
+        cvToken.login(info)
+        cvAPI = CV_API(cvToken)
+        clientName = request.GET.get('clientName', '')
+        cvBackup = cvAPI.getBackupset(clientName, "Virtual")
+
+        result = cvAPI.getJobList(cvBackup["clientId"], agentType=None, backupset=cvBackup["backupsetName"],
+                                  type="backup")
+        for node in result:
+            try:
+                x = time.localtime(float(node["LastTime"]))
+                node["LastTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+            try:
+
+                x = time.localtime(float(node["StartTime"]))
+                node["StartTime"] = time.strftime('%Y-%m-%d %H:%M:%S', x)
+            except:
+                pass
+        return HttpResponse(json.dumps({"data": result}))
 
 
 def process_schedule(request, funid):
@@ -7425,7 +7851,7 @@ def phyproconfigdata(request):
         userGUID = request.user.userinfo.userGUID
         result = []
         allhost = ClientHost.objects.exclude(status="9").filter(hostType="physical box").filter(
-            Q(owernID=userGUID) | Q(userinfo__id=request.user.userinfo.id))
+            owernID=userGUID)
         if (len(allhost) > 0):
             for host in allhost:
                 id = host.id
@@ -8124,7 +8550,7 @@ def vmproconfig(request, funid):
             schdules.append({"id": schdule.id, "name": schdule.name + "(" + schdule.description + ")"})
 
         allhost = ClientHost.objects.exclude(status="9").filter(hostType="physical box").filter(
-            Q(owernID=request.user.userinfo.userGUID) | Q(userinfo__id=request.user.userinfo.id))
+            owernID=request.user.userinfo.userGUID)
         pyhhost = []
         if (len(allhost) > 0):
             for host in allhost:
@@ -8146,9 +8572,10 @@ def vmproconfig(request, funid):
 
 def vmproconfigdata(request):
     if request.user.is_authenticated():
+        print(11111)
         result = []
         allhost = ClientHost.objects.exclude(status="9").filter(hostType="VMWARE").filter(
-            Q(owernID=request.user.userinfo.userGUID) | Q(userinfo__id=request.user.userinfo.id))
+            owernID=request.user.userinfo.userGUID)
         if (len(allhost) > 0):
             for host in allhost:
                 clientName = host.clientName
@@ -8242,6 +8669,7 @@ def getvmlist(request):
                 cvToken.login(info)
                 cvAPI = CV_API(cvToken)
                 vmlist = cvAPI.getVMWareVMList(allhost[0].clientName)
+                print(111)
                 for node in vmlist:
                     result.append({"vmid": node["VMName"], "vmname": node["VMName"]})
 
