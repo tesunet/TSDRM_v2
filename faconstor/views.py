@@ -7102,9 +7102,7 @@ def oraclerecovery(request, offset):
                 alldataset = DataSet.objects.filter(clientGUID=myhost[0].clientGUID, agentType='Oracle').exclude(
                     status="9")
                 if len(alldataset) > 0:
-                    allhost = ClientHost.objects.exclude(status="9").filter(Q(hostType="physical box") & (
-                            Q(owernID=request.user.userinfo.userGUID) | Q(
-                        userinfo__id=request.user.userinfo.id))).filter(
+                    allhost = ClientHost.objects.exclude(status="9").filter(hostType="physical box").filter(owernID=request.user.userinfo.userGUID).filter(
                         agentTypeList__contains="<agentType>Oracle</agentType>")
                     destClient = []
                     for host in allhost:
@@ -7146,7 +7144,7 @@ def oraclerecoverydata(request):
         cvToken.login(info)
         cvAPI = CV_API(cvToken)
         clientName = request.GET.get('clientName', '')
-        cvBackup = cvAPI.getBackupset(clientName, "Oracle Database")
+        cvBackup = cvAPI.getBackupset(clientName, "Oracle")
 
         result = cvAPI.getJobList(cvBackup["clientId"], agentType=None, backupset=cvBackup["backupsetName"],
                                   type="backup")
@@ -7178,10 +7176,8 @@ def mssqlrecovery(request, offset):
                 alldataset = DataSet.objects.filter(clientGUID=myhost[0].clientGUID, agentType='SQL Server').exclude(
                     status="9")
                 if len(alldataset) > 0:
-                    allhost = ClientHost.objects.exclude(status="9").filter(Q(hostType="physical box") &
-                                                                            (Q(
-                                                                                owernID=request.user.userinfo.userGUID) | Q(
-                                                                                userinfo__id=request.user.userinfo.id))).filter(
+                    allhost = ClientHost.objects.exclude(status="9").filter(hostType="physical box").filter(
+                                                                                owernID=request.user.userinfo.userGUID).filter(
                         agentTypeList__contains="<agentType>SQL Server</agentType>")
                     destClient = []
                     for host in allhost:
@@ -7382,9 +7378,7 @@ def vmrecovery(request, offset):
         mydataset = DataSet.objects.filter(id=id)
         if len(mydataset) > 0:
             if mydataset[0].owernID == request.user.userinfo.userGUID:
-                allhost = ClientHost.objects.exclude(status="9").filter(Q(hostType="VMWARE") &
-                                                                        (Q(owernID=request.user.userinfo.userGUID) | Q(
-                                                                            userinfo__id=request.user.userinfo.id)))
+                allhost = ClientHost.objects.exclude(status="9").filter(hostType="VMWARE").filter(owernID=request.user.userinfo.userGUID)
                 # allhost = ClientHost.objects.exclude(status="9").filter(hostType="VMWARE").exclude(clientGUID=mydataset[0].clientGUID)
                 destClient = []
                 vmlist = []

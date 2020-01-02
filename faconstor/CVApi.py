@@ -3829,6 +3829,7 @@ class CV_API(object):
         info = CV_Backupset(self.token, client, agentType)
         backupsetInfo = info.getBackupset(agentType, backupset)
         self.msg = info.msg
+
         return backupsetInfo
 
     def getSubclientInfo(self, subclientId):
