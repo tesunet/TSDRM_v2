@@ -2707,9 +2707,9 @@ class CV_Backupset(CV_Client):
             if "restoreTime" not in keys:
                 self.msg = "operator - no restoreTime"
                 return jobId
-            if "browseJobId" not in keys:
-                self.msg = "operator - no browseJobId"
-                return jobId
+            # if "browseJobId" not in keys:
+            #     self.msg = "operator - no browseJobId"
+            #     return jobId
         else:
             self.msg = "param not set"
             return jobId
@@ -2955,7 +2955,7 @@ class CV_Backupset(CV_Client):
         destClient = dest
         # instance = operator["instanceName"]
         restoreTime = operator["restoreTime"]
-        data_path = operator["data_path"]
+        #data_path = operator["data_path"]
         try:
             sourceclients = root.findall(".//associations/clientName")
             for node in sourceclients:
